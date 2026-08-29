@@ -2,6 +2,11 @@
 /**
  * Server-side render for the __BLOCK_TITLE__ block.
  *
+ * PHP-only block (supports.autoRegister): no editor bundle. Attributes are
+ * edited through the block editor's native UI — no React code required.
+ * Everything is escaped on output; attributes come pre-validated as types
+ * declared in block.json.
+ *
  * @package __SLUG__
  *
  * @var array $attributes Block attributes.
@@ -12,7 +17,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 $message = isset( $attributes['message'] ) ? (string) $attributes['message'] : '';
+$tone    = isset( $attributes['tone'] ) ? (string) $attributes['tone'] : 'default';
+$classes = array( '__BLOCK_PREFIX__' );
+
+if ( 'accent' === $tone ) {
+	$classes[] = '__BLOCK_PREFIX__--accent';
+}
+if ( ! empty( $attributes['emphasize'] ) ) {
+	$classes[] = '__BLOCK_PREFIX__--emphasized';
+}
+
+$wrapper = get_block_wrapper_attributes( array( 'class' => implode( ' ', $classes ) ) );
 ?>
-<div <?php echo get_block_wrapper_attributes( array( 'class' => '__BLOCK_PREFIX__' ) ); ?>>
-	<span class="__BLOCK_MESSAGE_CLASS__"><?php echo esc_html( $message ); ?></span>
+<div <?php echo $wrapper; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- get_block_wrapper_attributes() returns safe HTML. ?>>
+	<p class="__BLOCK_MESSAGE_CLASS__"><?php echo esc_html( $message ); ?></p>
 </div>

@@ -1,10 +1,7 @@
-/* __BLOCK_TITLE__ block — plain modern CSS. Native nesting: `&` does NOT
-   concatenate; write full class names. `@custom-media` is compiled. */
-
-@custom-media --br-mobile (max-width: 480px);
+/* __BLOCK_TITLE__ block — PHP-only: styling the autoRegister markup.
+   Native nesting: `&` does NOT concatenate; write full class names. */
 
 .__BLOCK_PREFIX__ {
-	display: block;
 	padding: 1.25rem;
 	border: 1px solid #ddd;
 	border-radius: 8px;
@@ -14,7 +11,12 @@
 		font-weight: 600;
 	}
 
-	@media (--br-mobile) {
-		padding: 0.75rem;
+	&.__BLOCK_PREFIX__--accent .__BLOCK_MESSAGE_CLASS__ {
+		color: #3858e9;
+	}
+
+	&.__BLOCK_PREFIX__--emphasized {
+		font-weight: 600;
+		border-inline-start: 3px solid #3858e9;
 	}
 }

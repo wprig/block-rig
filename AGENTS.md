@@ -56,4 +56,5 @@ Full reference: [docs/commands.md](docs/commands.md).
 
 See [.ai/SKILLS.md](.ai/SKILLS.md) — architecture, authoring blocks, styles,
 troubleshooting. The skills describe **both** sides: framework work here and
-generated-plugin work (which is what end users' agents will face).
+generated-plugin work (which is what end users' agents will face). PHP-first
+block authoring: [docs/php-blocks.md](docs/php-blocks.md).

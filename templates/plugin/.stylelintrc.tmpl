@@ -7,6 +7,7 @@
 		"declaration-no-important": true,
 		"custom-property-no-missing-var-function": true,
 		"selector-nested-pattern": [ "^(?!&[\\w-])", { "message": "Sass-style `&` concatenation is banned — native CSS nesting does not concatenate. Write full class names." } ],
+		"selector-disallowed-list": [ [ "/\\.wp-admin/", "/#wpadminbar/", "/\\.block-editor-page/" ], { "message": "WP 7.1 editor iframe: the canvas body carries no admin classes — these selectors match nothing when iframed. Scope to your block instead (`.editor-styles-wrapper` still wraps canvas content if you need editor-only styling)." } ],
 		"selector-class-pattern": null,
 		"no-descending-specificity": null
 	},

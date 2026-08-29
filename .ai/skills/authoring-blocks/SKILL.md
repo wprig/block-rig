@@ -1,8 +1,9 @@
 # Skill: Authoring Blocks
 
-For agents working **inside a generated Block Rig plugin**. Full reference:
-[docs/authoring-blocks.md](../../../docs/authoring-blocks.md) (framework repo)
-— the essentials below are self-sufficient.
+For agents working **inside a generated Block Rig plugin**. Related docs:
+[authoring-blocks.md](../../../docs/authoring-blocks.md) ·
+[php-blocks.md](../../../docs/php-blocks.md) — the essentials below are
+self-sufficient.
 
 ## Decision tree
 
@@ -86,7 +87,7 @@ Checklist:
 ```bash
 bun run block:new my-block --type dynamic
 bun run build            # or bun run dev and edit live
-bun run check            # before submitting: lint + tests
+bun run check            # before submitting: lint (tsc + stylelint + iframe guard) + tests
 ```
 
 Do not edit `blocks/*/build/` (generated) or register blocks in PHP manually

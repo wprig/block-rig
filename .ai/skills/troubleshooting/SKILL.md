@@ -33,6 +33,34 @@ Failure modes and fixes, verified against real runs.
 | Style appears inline, not as a file | WP core inlines small stylesheets (`wp_maybe_inline_styles`) | Cosmetic — core behavior, not a bug |
 | WP warning about missing asset file | `viewScript`/`editorStyle` handle in `block.json` without the built file | Add the handle only when `src/view.*` / `src/editorStyle.css` exists and the build ran |
 
+## Editor / frontend
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Block can't be inserted / "invalid block" | Editor bundle failed to register — check browser console for the missing `wp.*` global | A new `@wordpress/*` import may need its script dependency in `block.json`'s script handles, or the global name isn't mapped (see `wpGlobalFor`) |
+| Static block renders nothing on frontend | Post content has a bare self-closing comment but no saved markup | Static blocks need serialized `save()` markup inside the comment (wp-cli-created posts must include it manually) |
+| Style appears inline, not as a file | WP core inlines small stylesheets (`wp_maybe_inline_styles`) | Cosmetic — core behavior, not a bug |
+| WP warning about missing asset file | `viewScript`/`editorStyle` handle in `block.json` without the built file | Add the handle only when `src/view.*` / `src/editorStyle.css` exists and the build ran |
+| Editor-only CSS silently not applying | Style loaded via `enqueue_block_editor_assets` (admin page) or keyed on `.wp-admin` — both dead in the WP 7.1 iframed canvas | Use `editorStyle` in block.json (loaded into the canvas) and block-scoped selectors |
+| Editor JS reads wrong viewport / listeners never fire | Bare `window.`/`document.` in editor code — they see the admin document, not the iframed canvas | Derive via `useRefEffect` + `element.ownerDocument.defaultView` (see the Authoring Blocks skill); `lint:iframe` flags these |
+
+## The WP 7.1 iframe editor — testing both states
+
+The post editor canvas is **always an iframe in WP 7.1** (any theme, any
+`apiVersion` — v2 no longer opts out). During the transition both states are
+in the wild, so test **both states**, not both themes:
+
+- **Iframed:** Gutenberg plugin 22.6+ active (or WP 7.1+) — the iframe is
+  forced. Confirm with `element.ownerDocument !== document` or
+  `iframe[name="editor-canvas"]` in devtools.
+- **Not iframed:** WP 7.0 without the Gutenberg plugin, with a legacy v1/v2
+  block inserted alongside yours (the canvas drops the iframe on the fly;
+  [iframe-editor-examples](https://github.com/ryanwelcher/iframe-editor-examples)
+  ships a `legacy-api-v2` block for exactly this).
+
+Watch the console with `SCRIPT_DEBUG` on — deprecation warnings name blocks
+still on v1/v2.
+
 ## Zip / CI
 
 | Symptom | Cause | Fix |

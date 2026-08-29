@@ -6,11 +6,20 @@
 	"title": "__BLOCK_TITLE__",
 	"category": "widgets",
 	"icon": "block-default",
-	"description": "The __BLOCK_TITLE__ block.",
+	"description": "The __BLOCK_TITLE__ block (PHP-only).",
 	"attributes": {
 		"message": {
 			"type": "string",
 			"default": "Hello from Block Rig"
+		},
+		"tone": {
+			"type": "string",
+			"enum": [ "default", "accent" ],
+			"default": "default"
+		},
+		"emphasize": {
+			"type": "boolean",
+			"default": false
 		}
 	},
 	"supports": {

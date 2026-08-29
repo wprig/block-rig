@@ -7,9 +7,10 @@
     "build": "bun run scripts/build.ts",
     "dev": "bun run scripts/dev.ts",
     "block:new": "bun run scripts/scaffold.ts",
-    "lint": "bun run lint:types && bun run lint:css",
+    "lint": "bun run lint:types && bun run lint:css && bun run lint:iframe",
     "lint:types": "tsc --noEmit",
     "lint:css": "stylelint 'blocks/**/src/**/*.css'",
+    "lint:iframe": "bun run scripts/lint-iframe.ts",
     "test": "bun test",
     "check": "bun run lint && bun test",
     "zip": "bun run scripts/zip.ts"

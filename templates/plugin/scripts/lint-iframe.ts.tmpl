@@ -1,0 +1,91 @@
+/**
+ * iframe-guard — WP 7.1 editor iframe lint (zero deps).
+ *
+ * The 7.1 post editor canvas is a full iframe: editor JS runs in the ADMIN
+ * document, so bare `window.` / `document.` references in editor code see
+ * the wrong tree. This guard flags them in editor entry files.
+ *
+ * Exempt: view.* (frontend scripts run in the page document), `window.wp.*`
+ * and `window.React*` (WP-provided globals), and iframe-safe patterns
+ * (element.ownerDocument / defaultView / useRefEffect / ownerWindow).
+ *
+ * Usage: bun run scripts/lint-iframe.ts   (exits 1 on findings)
+ */
+import path from 'node:path';
+import fs from 'node:fs';
+import { loadConfig } from './lib/config';
+
+const root = process.cwd();
+const config = loadConfig( root );
+const blocksDir = path.join( root, config.paths.blocksDir );
+
+const ENTRY_FILES = [ 'index.tsx', 'index.ts', 'index.js', 'edit.tsx', 'edit.ts', 'edit.js' ];
+
+// Legitimate global use: the module shims themselves and iframe-safe patterns.
+const ALLOWED = [
+	/window\.\s*wp\b/,
+	/window\.React\b/,
+	/window\.ReactDOM\b/,
+	/element\.ownerDocument/,
+	/\.ownerDocument\b/,
+	/defaultView/,
+	/ownerWindow/,
+	/useRefEffect/,
+];
+
+const findings: string[] = [];
+
+if ( fs.existsSync( blocksDir ) ) {
+	for ( const block of fs.readdirSync( blocksDir ) ) {
+		const blockDir = path.join( blocksDir, block );
+		if (
+			! fs.statSync( blockDir ).isDirectory() ||
+			! fs.existsSync( path.join( blockDir, 'block.json' ) )
+		) {
+			continue;
+		}
+		for ( const file of ENTRY_FILES ) {
+			const src = path.join( blockDir, 'src', file );
+			if ( ! fs.existsSync( src ) ) {
+				continue;
+			}
+			const lines = fs.readFileSync( src, 'utf8' ).split( '\n' );
+			for ( let i = 0; i < lines.length; i++ ) {
+				const code = lines[ i ].replace( /\/\/.*$/, '' );
+				if ( ! /\b(window|document)\s*\./.test( code ) ) {
+					continue;
+				}
+				if ( ALLOWED.some( ( re ) => re.test( code ) ) ) {
+					continue;
+				}
+				findings.push( `${ block }/src/${ file }:${ i + 1 }: ${ lines[ i ].trim().slice( 0, 100 ) }` );
+			}
+		}
+	}
+}
+
+if ( findings.length > 0 ) {
+	console.error(
+		[
+			'[block-rig] iframe-editor guard: global document/window use in editor code.',
+			'',
+			'The WP 7.1 editor canvas is a full iframe — editor JS runs in the ADMIN',
+			"document, so global `document`/`window` see the wrong tree. Derive them",
+			'from your own element instead (context-agnostic, works iframed or not):',
+			'',
+			'  import { useRefEffect } from "@wordpress/compose";',
+			'  const ref = useRefEffect( ( element ) => {',
+			'      const view = element.ownerDocument.defaultView;',
+			'      view.addEventListener( "resize", … ); // never window.…',
+			'  }, [] );',
+			'',
+			'Violations:',
+			...findings.map( ( f ) => `  ${ f }` ),
+			'',
+			'(view.* is exempt — frontend scripts run in the page document.)',
+		].join( '\n' )
+	);
+	process.exit( 1 );
+}
+
+console.log( '[block-rig] iframe guard: editor entries are document-agnostic ✓' );

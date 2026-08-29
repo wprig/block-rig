@@ -19,7 +19,7 @@ SCSS, no PostCSS.
 | `bun run dev` | Dev server: reverse-proxies the WP site + live-reload + per-block rebuild |
 | `bun run dev --proxy http://my-site.local` | Same, target via flag (alternative to config) |
 | `bun run block:new <slug> --type static\|dynamic\|php` | Scaffold a new block |
-| `bun run lint` | TypeScript check + stylelint CSS budget |
+| `bun run lint` | TypeScript check + stylelint budget + WP 7.1 iframe guard |
 | `bun test` | Unit tests (config, wp-externals, CSS compile, lint budget) |
 | `bun run check` | Full pre-flight: lint + test |
 | `bun run zip` | Production build + package as WP-installable `<slug>.zip` |
@@ -41,6 +41,9 @@ The `.stylelintrc` budget is **enforced** — `bun run lint` fails on violations
 - **No `!important`.**
 - **Sass-style `&` concatenation is banned** — native CSS nesting does not
   concatenate; `&__x` compiles to a broken selector. Write full class names.
+- **WP 7.1 iframe editor:** the canvas body carries no admin classes —
+  `.wp-admin` / `#wpadminbar` / `.block-editor-page` selectors are banned
+  (lint-enforced). `.editor-styles-wrapper` remains the one editor-only scope.
 - `@custom-media` is supported (compiled via Lightning CSS `drafts.customMedia`
   — already enabled in `scripts/build.ts`; don't remove it).
 - Logical properties, `:has()`, container queries: all fine.

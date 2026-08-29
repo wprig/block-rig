@@ -70,7 +70,8 @@ block-rig/
 │   ├── architecture.md        # pipeline + invariants
 │   ├── commands.md            # full command reference
 │   ├── css-authoring.md       # enforced CSS budget playbook
-│   └── authoring-blocks.md    # block types, entries, block.json reference
+│   ├── authoring-blocks.md    # block types, entries, block.json reference
+│   └── php-blocks.md          # PHP-only / PHP-rendered block authoring
 └── spike/                     # Phase 0 artifact (throwaway Bun.build proof)
 ```
 

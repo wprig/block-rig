@@ -46,4 +46,23 @@ describe( 'stylelint CSS budget', () => {
 		const rules = result.results[ 0 ].warnings.map( ( w: { rule: string } ) => w.rule );
 		expect( rules ).toContain( 'max-nesting-depth' );
 	} );
+
+	test( 'admin-chrome selectors are banned (WP 7.1 iframe editor)', async () => {
+		for ( const selector of [
+			'.wp-admin .demo { color: red; }',
+			'body.block-editor-page .demo { color: red; }',
+			'#wpadminbar .demo { color: red; }',
+		] ) {
+			const result = await lint( `${ selector }\n` );
+			const rules = result.results[ 0 ].warnings.map( ( w: { rule: string } ) => w.rule );
+			expect( rules ).toContain( 'selector-disallowed-list' );
+		}
+	} );
+
+	test( 'editor-scoped styling via .editor-styles-wrapper remains allowed', async () => {
+		const result = await lint(
+			'.editor-styles-wrapper .demo {\n\tcolor: red;\n}\n'
+		);
+		expect( result.results[ 0 ].warnings ).toEqual( [] );
+	} );
 } );

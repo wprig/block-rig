@@ -87,6 +87,28 @@ there; if a `@custom-media` query ever stops compiling, that flag was removed.
 - `src/editorStyle.css` → editor only (add `"editorStyle": "file:./build/editorStyle.css"`
   to block.json yourself).
 
+## WP 7.1 iframe editor rules (enforced)
+
+The editor canvas is a full iframe in WP 7.1 — its `<body>` carries **no**
+admin classes. The budget therefore bans these selectors outright
+(`selector-disallowed-list`):
+
+```css
+/* ❌ matches nothing once the canvas is iframed */
+.wp-admin .br-notice { … }
+body.block-editor-page .br-notice { … }
+#wpadminbar … { … }
+
+/* ✅ scope to the block; editor-only via the wrapper that survives */
+.editor-styles-wrapper .br-notice { … }
+```
+
+Also implied by the iframe: no admin-chrome offsets (`calc(100vw - 160px)`,
+`top: 32px`) — the canvas is the viewport now — and no `!important`
+specificity walls (already banned; the iframe removed the leakage they fought,
+so they now only fight *theme* styles and drift the preview away from the
+front end).
+
 ## Debugging a lint failure
 
 Run `bun run lint:css` for file/line/rule; the message names the rule. The

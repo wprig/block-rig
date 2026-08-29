@@ -1,0 +1,57 @@
+import { describe, test, expect } from 'bun:test';
+import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+
+const GUARD = path.resolve( import.meta.dir, '..', 'scripts', 'lint-iframe.ts' );
+
+function scaffold( files: Record< string, string > ): string {
+	const dir = fs.mkdtempSync( path.join( os.tmpdir(), 'br-iframe-' ) );
+	fs.mkdirSync( path.join( dir, 'blocks', 'demo', 'src' ), { recursive: true } );
+	fs.writeFileSync( path.join( dir, 'blocks', 'demo', 'block.json' ), '{}' );
+	for ( const [ rel, content ] of Object.entries( files ) ) {
+		fs.writeFileSync( path.join( dir, 'blocks', 'demo', 'src', rel ), content );
+	}
+	return dir;
+}
+
+function runGuard( dir: string ): { code: number; out: string } {
+	const proc = Bun.spawnSync( [ 'bun', GUARD ], { cwd: dir } );
+	return { code: proc.exitCode, out: proc.stdout.toString() + proc.stderr.toString() };
+}
+
+describe( 'iframe guard (lint-iframe.ts)', () => {
+	test( 'clean editor entries pass', () => {
+		const dir = scaffold( {
+			'edit.tsx': [
+				'import { useRefEffect } from "@wordpress/compose";',
+				'const ref = useRefEffect( ( element ) => {',
+				'  const view = element.ownerDocument.defaultView;',
+				'  view.addEventListener( "resize", () => {} );',
+				'  return () => view.removeEventListener( "resize", () => {} );',
+				'}, [] );',
+				'export default () => {',
+				'  const g = window.wp.blocks;',
+				'  void ref; void view; void g;',
+				'};',
+			].join( '\n' ),
+		} );
+		const { code } = runGuard( dir );
+		expect( code ).toBe( 0 );
+	} );
+
+	test( 'flags bare window/document use in editor entries', () => {
+		const dir = scaffold( {
+			'edit.tsx': 'useEffect( () => { document.addEventListener( "click", f ); }, [] );',
+		} );
+		const { code, out } = runGuard( dir );
+		expect( code ).toBe( 1 );
+		expect( out ).toContain( 'demo/src/edit.tsx' );
+	} );
+
+	test( 'does not flag view scripts', () => {
+		const dir = scaffold( { 'view.ts': 'document.addEventListener( "click", f );' } );
+		const { code } = runGuard( dir );
+		expect( code ).toBe( 0 );
+	} );
+} );
