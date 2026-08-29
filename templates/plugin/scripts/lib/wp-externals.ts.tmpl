@@ -1,0 +1,49 @@
+/**
+ * Bun plugin that remaps `@wordpress/*`, `react`, `react-dom` and the
+ * automatic JSX runtime to the `window.wp.*` globals WordPress enqueues,
+ * so nothing WP-provided is ever bundled.
+ */
+const WP_GLOBALS: Record< string, string > = {
+	react: 'window.React',
+	'react-dom': 'window.ReactDOM',
+};
+
+export function wpGlobalFor( pkg: string ): string | null {
+	if ( WP_GLOBALS[ pkg ] ) {
+		return WP_GLOBALS[ pkg ];
+	}
+	if ( pkg.startsWith( '@wordpress/' ) ) {
+		const slug = pkg.replace( '@wordpress/', '' ).replace(
+			/-([a-z])/g,
+			( _, c: string ) => c.toUpperCase()
+		);
+		return `window.wp.${ slug }`;
+	}
+	return null;
+}
+
+export function wpExternals(): Bun.BunPlugin {
+	return {
+		name: 'block-rig-wp-externals',
+		setup( build: Bun.PluginBuilder ) {
+			build.onResolve(
+				{ filter: /^(react|react-dom|react\/.*|@wordpress\/.*)$/ },
+				( args ) => ( { path: args.path, namespace: 'wp-global' } )
+			);
+			build.onLoad( { filter: /.*/, namespace: 'wp-global' }, ( args ) => {
+				if ( args.path === 'react/jsx-runtime' || args.path === 'react/jsx-dev-runtime' ) {
+					return {
+						contents:
+							'module.exports = { jsx: window.wp.element.jsx, jsxs: window.wp.element.jsxs, Fragment: window.wp.element.Fragment };',
+						loader: 'js',
+					};
+				}
+				const global = wpGlobalFor( args.path );
+				if ( ! global ) {
+					return { contents: '', errors: [ { text: `Unhandled WP import: ${ args.path }` } ] };
+				}
+				return { contents: `module.exports = ${ global };`, loader: 'js' };
+			} );
+		},
+	};
+}

@@ -1,0 +1,170 @@
+/**
+ * Shared build engine — used by build.ts (CLI) and dev.ts (incremental).
+ * Pure Bun.build + Lightning CSS. No esbuild, no webpack, no SCSS.
+ */
+import path from 'node:path';
+import fs from 'node:fs';
+import browserslist from 'browserslist';
+import { transform, browserslistToTargets } from 'lightningcss';
+import { wpExternals } from './wp-externals';
+import { loadConfig, type BlockRigConfig } from './config';
+
+export interface BuildContext {
+	root: string;
+	config: BlockRigConfig;
+	blocksDir: string;
+	isProd: boolean;
+	targets: ReturnType< typeof browserslistToTargets >;
+}
+
+export function createBuildContext( root: string, opts?: { prod?: boolean } ): BuildContext {
+	const config = loadConfig( root );
+	return {
+		root,
+		config,
+		blocksDir: path.join( root, config.paths.blocksDir ),
+		isProd: opts?.prod ?? false,
+		targets: browserslistToTargets( browserslist( config.css.browserslist ) ),
+	};
+}
+
+export function listBlocks( ctx: BuildContext ): string[] {
+	if ( ! fs.existsSync( ctx.blocksDir ) ) {
+		return [];
+	}
+	return fs
+		.readdirSync( ctx.blocksDir )
+		.filter( ( d ) =>
+			fs.statSync( path.join( ctx.blocksDir, d ) ).isDirectory() &&
+			fs.existsSync( path.join( ctx.blocksDir, d, 'block.json' ) )
+		);
+}
+
+function isAutoRegister( ctx: BuildContext, block: string ): boolean {
+	try {
+		const meta = JSON.parse(
+			fs.readFileSync( path.join( ctx.blocksDir, block, 'block.json' ), 'utf8' )
+		) as { supports?: { autoRegister?: boolean } };
+		return meta.supports?.autoRegister === true;
+	} catch {
+		return false;
+	}
+}
+
+const kb = ( b: number ) => ( b / 1024 ).toFixed( 1 ) + 'kB';
+
+/** Compile src/<name>.css → build/<name>.css (nesting + custom media + targets). */
+export async function buildCss( ctx: BuildContext, block: string, name: string ): Promise< number > {
+	const src = path.join( ctx.blocksDir, block, 'src', name );
+	if ( ! fs.existsSync( src ) ) {
+		return 0;
+	}
+	const outDir = path.join( ctx.blocksDir, block, 'build' );
+	const css = await Bun.file( src ).text();
+	const result = transform( {
+		filename: src,
+		code: Buffer.from( css ),
+		minify: ctx.isProd,
+		sourceMap: ! ctx.isProd,
+		drafts: { customMedia: true },
+		targets: ctx.targets,
+	} );
+	await Bun.write( path.join( outDir, name ), result.code );
+	if ( result.map ) {
+		await Bun.write( path.join( outDir, `${ name }.map` ), result.map );
+	}
+	return result.code.length;
+}
+
+/** Bundle a generic entry (index or view) → build/<name>.js via Bun.build. */
+async function bundle( ctx: BuildContext, block: string, entry: string, name: string ): Promise< number > {
+	const result = await Bun.build( {
+		entrypoints: [ entry ],
+		outdir: path.join( ctx.blocksDir, block, 'build' ),
+		target: 'browser',
+		format: 'iife',
+		minify: ctx.isProd,
+		sourcemap: ctx.isProd ? 'none' : 'linked',
+		jsx: { runtime: 'automatic' },
+		define: { 'process.env.NODE_ENV': ctx.isProd ? '"production"' : '"development"' },
+		plugins: [ wpExternals() ],
+		naming: `${ name }.[ext]`,
+	} );
+	if ( ! result.success ) {
+		throw new Error( result.logs.map( String ).join( '\n' ) );
+	}
+	return result.outputs[ 0 ].size;
+}
+
+function findEntry( ctx: BuildContext, block: string, candidates: string[] ): string | undefined {
+	const base = path.join( ctx.blocksDir, block, 'src' );
+	return candidates
+		.map( ( f ) => path.join( base, f ) )
+		.find( ( f ) => fs.existsSync( f ) );
+}
+
+/** Bundle src/index.{tsx,ts,js} → build/index.js via Bun.build. */
+export async function buildJs( ctx: BuildContext, block: string ): Promise< number > {
+	if ( isAutoRegister( ctx, block ) ) {
+		return 0;
+	}
+	const entry = findEntry( ctx, block, [ 'index.tsx', 'index.ts', 'index.js' ] );
+	if ( ! entry ) {
+		return 0;
+	}
+	return bundle( ctx, block, entry, 'index' );
+}
+
+/** Bundle src/view.{tsx,ts,js} → build/view.js (block.json viewScript handle). */
+export async function buildView( ctx: BuildContext, block: string ): Promise< number > {
+	if ( isAutoRegister( ctx, block ) ) {
+		return 0;
+	}
+	const entry = findEntry( ctx, block, [ 'view.tsx', 'view.ts', 'view.js' ] );
+	if ( ! entry ) {
+		return 0;
+	}
+	return bundle( ctx, block, entry, 'view' );
+}
+
+/** Build one block. Returns its total output bytes. */
+export async function buildBlock( ctx: BuildContext, block: string ): Promise< number > {
+	const js = await buildJs( ctx, block );
+	const view = await buildView( ctx, block );
+	const css = await buildCss( ctx, block, 'style.css' );
+	const editorCss = await buildCss( ctx, block, 'editorStyle.css' );
+	const total = js + view + css + editorCss;
+	const parts = [
+		js ? `index.js ${ kb( js ) }` : null,
+		view ? `view.js ${ kb( view ) }` : null,
+		css ? `style.css ${ kb( css ) }` : null,
+		editorCss ? `editorStyle.css ${ kb( editorCss ) }` : null,
+	].filter( Boolean );
+	console.log( `[block-rig] ${ block }: ${ parts.join( ', ' ) || 'nothing to build' }` );
+	return total;
+}
+
+/** Build every block. Returns false when any block failed. */
+export async function buildOnce( ctx: BuildContext ): Promise< boolean > {
+	const blocks = listBlocks( ctx );
+	if ( blocks.length === 0 ) {
+		console.log( `[block-rig] no blocks found in ${ ctx.config.paths.blocksDir }/` );
+		return true;
+	}
+	const t0 = performance.now();
+	let total = 0;
+	let failed = false;
+	for ( const block of blocks ) {
+		try {
+			total += await buildBlock( ctx, block );
+		} catch ( e ) {
+			failed = true;
+			console.error( `[block-rig] ${ block } build failed:`, ( e as Error ).message );
+		}
+	}
+	const ms = Math.round( performance.now() - t0 );
+	console.log(
+		`[block-rig] ${ blocks.length } block(s) in ${ ms }ms (${ kb( total ) } total${ ctx.isProd ? ', minified' : ', dev sourcemaps' })`
+	);
+	return ! failed;
+}

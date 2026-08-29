@@ -1,0 +1,52 @@
+import { describe, test, expect } from 'bun:test';
+import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import { loadConfig } from '../scripts/lib/config';
+
+function tmpConfig( json: string ): string {
+	const dir = fs.mkdtempSync( path.join( os.tmpdir(), 'br-config-' ) );
+	fs.writeFileSync( path.join( dir, 'blockrig.config.json' ), json );
+	return dir;
+}
+
+describe( 'loadConfig', () => {
+	test( 'falls back to defaults when no config file exists', () => {
+		const dir = fs.mkdtempSync( path.join( os.tmpdir(), 'br-config-' ) );
+		const config = loadConfig( dir );
+		expect( config.paths.blocksDir ).toBe( 'blocks' );
+		expect( config.css.browserslist ).toContain( 'last 2 versions' );
+		expect( config.devServer.port ).toBe( 8777 );
+		expect( config.devServer.proxyTarget ).toBe( '' );
+	} );
+
+	test( 'reads plugin identity and paths from blockrig.config.json', () => {
+		const dir = tmpConfig(
+			JSON.stringify( {
+				pluginSlug: 'acme-blocks',
+				pluginName: 'Acme Blocks',
+				namespace: 'acme',
+				version: '1.2.3',
+			} )
+		);
+		const config = loadConfig( dir );
+		expect( config.pluginSlug ).toBe( 'acme-blocks' );
+		expect( config.namespace ).toBe( 'acme' );
+		expect( config.version ).toBe( '1.2.3' );
+	} );
+
+	test( 'merges overrides without dropping defaults', () => {
+		const dir = tmpConfig(
+			JSON.stringify( {
+				paths: { blocksDir: 'src-blocks' },
+				devServer: { proxyTarget: 'http://my-site.local' },
+				css: { browserslist: [ 'last 1 version' ] },
+			} )
+		);
+		const config = loadConfig( dir );
+		expect( config.paths.blocksDir ).toBe( 'src-blocks' );
+		expect( config.devServer.proxyTarget ).toBe( 'http://my-site.local' );
+		expect( config.devServer.port ).toBe( 8777 );
+		expect( config.css.browserslist ).toEqual( [ 'last 1 version' ] );
+	} );
+} );

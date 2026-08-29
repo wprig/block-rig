@@ -1,0 +1,146 @@
+/**
+ * zip — production-build, then package the plugin as a WP-installable zip.
+ *
+ * Zero dependencies: the zip container is written by hand (local headers +
+ * central directory + EOCD) with node:zlib deflate — works on every OS Bun
+ * runs on, including Windows runners where no `zip` CLI exists.
+ *
+ * Usage: bun run zip
+ */
+import path from 'node:path';
+import fs from 'node:fs';
+import { deflateRawSync } from 'node:zlib';
+import { createBuildContext, buildOnce } from './lib/build';
+import { loadConfig } from './lib/config';
+
+const root = path.resolve( import.meta.dir, '..' );
+const config = loadConfig( root );
+
+console.log( '[block-rig] production build before packaging…' );
+const ctx = createBuildContext( root, { prod: true } );
+if ( !( await buildOnce( ctx ) ) ) {
+	process.exit( 1 );
+}
+
+// -- collect files -----------------------------------------------------------
+const EXCLUDED_DIRS = new Set( [ 'node_modules', '.git' ] );
+const EXCLUDED_FILES = new Set( [ '.DS_Store', 'nohup.out' ] );
+const prefix = `${ config.pluginSlug }/`;
+
+const files: Array< { name: string; data: Buffer } > = [];
+
+function walk( dir: string, rel = '' ): void {
+	for ( const entry of fs.readdirSync( dir, { withFileTypes: true } ) ) {
+		if ( entry.isDirectory() && EXCLUDED_DIRS.has( entry.name ) ) {
+			continue;
+		}
+		const full = path.join( dir, entry.name );
+		const relPath = rel ? `${ rel }/${ entry.name }` : entry.name;
+		if ( entry.isDirectory() ) {
+			walk( full, relPath );
+		} else if (
+			! EXCLUDED_FILES.has( entry.name ) &&
+			! entry.name.endsWith( '.zip' )
+		) {
+			files.push( { name: prefix + relPath, data: fs.readFileSync( full ) } );
+		}
+	}
+}
+
+walk( root );
+files.sort( ( a, b ) => a.name.localeCompare( b.name ) );
+
+// -- zip writer (STORE + DEFLATE, no dir entries) -----------------------------
+let CRC_TABLE: number[] | null = null;
+
+function crc32( buf: Buffer ): number {
+	if ( ! CRC_TABLE ) {
+		CRC_TABLE = [];
+		for ( let n = 0; n < 256; n++ ) {
+			let c = n;
+			for ( let k = 0; k < 8; k++ ) {
+				c = c & 1 ? 0xedb88320 ^ ( c >>> 1 ) : c >>> 1;
+			}
+			CRC_TABLE[ n ] = c >>> 0;
+		}
+	}
+	let crc = 0xffffffff;
+	for ( let i = 0; i < buf.length; i++ ) {
+		crc = ( crc >>> 8 ) ^ CRC_TABLE[ ( crc ^ buf[ i ] ) & 0xff ];
+	}
+	return ( crc ^ 0xffffffff ) >>> 0;
+}
+
+function dosTime( d: Date ): { time: number; date: number } {
+	return {
+		time: ( d.getHours() << 11 ) | ( d.getMinutes() << 5 ) | Math.floor( d.getSeconds() / 2 ),
+		date:
+			( Math.max( 0, d.getFullYear() - 1980 ) << 9 ) |
+			( ( d.getMonth() + 1 ) << 5 ) |
+			d.getDate(),
+	};
+}
+
+const { time, date } = dosTime( new Date() );
+const local: Buffer[] = [];
+const central: Buffer[] = [];
+let offset = 0;
+
+for ( const file of files ) {
+	const nameBuf = Buffer.from( file.name, 'utf8' );
+	const crc = crc32( file.data );
+	let method = 8;
+	let comp = deflateRawSync( file.data, { level: 9 } ) as Buffer;
+	if ( comp.length >= file.data.length ) {
+		method = 0;
+		comp = file.data;
+	}
+
+	const lh = Buffer.alloc( 30 );
+	lh.writeUInt32LE( 0x04034b50, 0 );
+	lh.writeUInt16LE( 20, 4 );
+	lh.writeUInt16LE( 0, 6 );
+	lh.writeUInt16LE( method, 8 );
+	lh.writeUInt16LE( time, 10 );
+	lh.writeUInt16LE( date, 12 );
+	lh.writeUInt32LE( crc, 14 );
+	lh.writeUInt32LE( comp.length, 18 );
+	lh.writeUInt32LE( file.data.length, 22 );
+	lh.writeUInt16LE( nameBuf.length, 26 );
+	lh.writeUInt16LE( 0, 28 );
+	local.push( lh, nameBuf, comp );
+
+	const cd = Buffer.alloc( 46 );
+	cd.writeUInt32LE( 0x02014b50, 0 );
+	cd.writeUInt16LE( 20, 4 );
+	cd.writeUInt16LE( 20, 6 );
+	cd.writeUInt16LE( 0, 8 );
+	cd.writeUInt16LE( method, 10 );
+	cd.writeUInt16LE( time, 12 );
+	cd.writeUInt16LE( date, 14 );
+	cd.writeUInt32LE( crc, 16 );
+	cd.writeUInt32LE( comp.length, 20 );
+	cd.writeUInt32LE( file.data.length, 24 );
+	cd.writeUInt16LE( nameBuf.length, 28 );
+	cd.writeUInt32LE( offset, 42 );
+	central.push( cd, nameBuf );
+
+	offset += 30 + nameBuf.length + comp.length;
+}
+
+const cdBuf = Buffer.concat( central );
+const eocd = Buffer.alloc( 22 );
+eocd.writeUInt32LE( 0x06054b50, 0 );
+eocd.writeUInt16LE( files.length, 8 );
+eocd.writeUInt16LE( files.length, 10 );
+eocd.writeUInt32LE( cdBuf.length, 12 );
+eocd.writeUInt32LE( offset, 16 );
+
+const out = path.join( root, `${ config.pluginSlug }.zip` );
+await Bun.write(
+	out,
+	Buffer.concat( [ ...local, cdBuf, eocd ] )
+);
+
+const kb = ( ( offset + cdBuf.length + 22 ) / 1024 ).toFixed( 1 );
+console.log( `[block-rig] packaged ${ files.length } files → ${ config.pluginSlug }.zip (${ kb }kB)` );

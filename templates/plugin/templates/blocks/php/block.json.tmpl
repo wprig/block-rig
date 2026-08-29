@@ -1,0 +1,23 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "__NAMESPACE__/__BLOCK_NAME__",
+	"version": "__VERSION__",
+	"title": "__BLOCK_TITLE__",
+	"category": "widgets",
+	"icon": "block-default",
+	"description": "The __BLOCK_TITLE__ block.",
+	"attributes": {
+		"message": {
+			"type": "string",
+			"default": "Hello from Block Rig"
+		}
+	},
+	"supports": {
+		"html": false,
+		"autoRegister": true
+	},
+	"textdomain": "__TEXT_DOMAIN__",
+	"style": "file:./build/style.css",
+	"render": "file:./render.php"
+}

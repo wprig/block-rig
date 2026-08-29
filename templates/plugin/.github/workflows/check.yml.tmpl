@@ -1,0 +1,38 @@
+name: check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install
+
+      - name: Lint + test
+        run: bun run check
+
+      - name: Production build
+        run: bun run build
+        env:
+          NODE_ENV: production
+
+      - name: Package
+        run: bun run zip
+
+      - name: Verify zip artifact
+        run: test -f "${{ github.event.repository.name }}.zip"
+        shell: bash

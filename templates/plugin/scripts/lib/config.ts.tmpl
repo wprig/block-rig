@@ -1,0 +1,40 @@
+/**
+ * Shared config loader — blockrig.config.json is the single source of truth.
+ */
+import path from 'node:path';
+import fs from 'node:fs';
+
+export interface BlockRigConfig {
+	pluginSlug: string;
+	pluginName: string;
+	namespace: string;
+	version: string;
+	paths: { blocksDir: string };
+	css: { browserslist: string[] };
+	devServer: { proxyTarget: string; port: number };
+}
+
+const defaults: BlockRigConfig = {
+	pluginSlug: '',
+	pluginName: '',
+	namespace: '',
+	version: '0.1.0',
+	paths: { blocksDir: 'blocks' },
+	css: { browserslist: [ '> 0.5%', 'last 2 versions', 'Firefox ESR', 'not dead' ] },
+	devServer: { proxyTarget: '', port: 8777 },
+};
+
+export function loadConfig( root: string ): BlockRigConfig {
+	const file = path.join( root, 'blockrig.config.json' );
+	if ( ! fs.existsSync( file ) ) {
+		return defaults;
+	}
+	const custom = JSON.parse( fs.readFileSync( file, 'utf8' ) ) as Partial< BlockRigConfig >;
+	return {
+		...defaults,
+		...custom,
+		paths: { ...defaults.paths, ...custom.paths },
+		css: { ...defaults.css, ...custom.css },
+		devServer: { ...defaults.devServer, ...custom.devServer },
+	};
+}

@@ -1,0 +1,43 @@
+name: scaffold-smoke
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  scaffold:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Scaffold a plugin
+        run: bun run bin/create-block-rig.ts ci-smoke --dir .tmp
+
+      - name: Install, lint, test
+        run: bun install && bun run check
+        shell: bash
+        working-directory: .tmp/ci-smoke
+
+      - name: Production build
+        run: bun run build
+        working-directory: .tmp/ci-smoke
+        env:
+          NODE_ENV: production
+
+      - name: Package
+        run: bun run zip
+        working-directory: .tmp/ci-smoke
+
+      - name: Verify zip artifact
+        run: test -f ci-smoke.zip
+        shell: bash
+        working-directory: .tmp/ci-smoke

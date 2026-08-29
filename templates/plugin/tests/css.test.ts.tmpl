@@ -1,0 +1,45 @@
+import { describe, test, expect } from 'bun:test';
+import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import { createBuildContext, buildCss } from '../scripts/lib/build';
+
+async function tmpBlock( css: string ): Promise< string > {
+	const root = fs.mkdtempSync( path.join( os.tmpdir(), 'br-css-' ) );
+	await Bun.write( path.join( root, 'blocks', 'demo', 'src', 'style.css' ), css );
+	return root;
+}
+
+describe( 'buildCss', () => {
+	test( 'compiles native nesting to flat CSS', async () => {
+		const root = await tmpBlock(
+			'.demo {\n\tpadding: 1rem;\n\n\t.demo__inner {\n\t\tcolor: red;\n\t}\n}\n'
+		);
+		const out = path.join( root, 'blocks', 'demo', 'build', 'style.css' );
+		await buildCss( createBuildContext( root ), 'demo', 'style.css' );
+		const css = await Bun.file( out ).text();
+		expect( css ).toContain( '.demo .demo__inner' );
+	} );
+
+	test( 'expands custom media (drafts.customMedia)', async () => {
+		const root = await tmpBlock(
+			'@custom-media --br-mobile (max-width: 480px);\n\n.demo {\n\t@media (--br-mobile) {\n\t\tpadding: 0.5rem;\n\t}\n}\n'
+		);
+		const out = path.join( root, 'blocks', 'demo', 'build', 'style.css' );
+		await buildCss( createBuildContext( root ), 'demo', 'style.css' );
+		const css = await Bun.file( out ).text();
+		expect( css ).toContain( '@media' );
+		expect( css ).toContain( '480px' );
+		expect( css ).not.toContain( '@custom-media' );
+		expect( css ).not.toContain( '--br-mobile' );
+	} );
+
+	test( 'minifies in production mode', async () => {
+		const root = await tmpBlock( '.demo {\n\tcolor: red;\n}\n' );
+		const out = path.join( root, 'blocks', 'demo', 'build', 'style.css' );
+		await buildCss( createBuildContext( root, { prod: true } ), 'demo', 'style.css' );
+		const css = await Bun.file( out ).text();
+		expect( css ).not.toContain( '\n' );
+		expect( css ).toContain( 'color:red' );
+	} );
+} );

@@ -1,0 +1,23 @@
+# __PLUGIN_NAME__
+
+Block plugin scaffolded by [Block Rig](https://github.com/block-rig/block-rig) —
+built entirely by Bun, styled with plain CSS compiled by Lightning CSS.
+
+## Commands
+
+```bash
+bun install
+bun run build        # one-shot build
+bun run dev          # dev server: proxy + live-reload + per-block rebuild
+bun run block:new my-block --type dynamic   # static | dynamic | php
+bun run check        # lint (tsc + stylelint budget) + tests
+bun run zip          # production build + WP-installable zip
+```
+
+## Structure
+
+```
+blockrig.config.json      # single source of truth
+__SLUG__.php              # plugin bootstrap (auto-registers every block under blocks/)
+blocks/<name>/            # one directory per block; build/ is generated
+```

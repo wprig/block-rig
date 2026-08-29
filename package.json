@@ -1,0 +1,18 @@
+{
+  "name": "create-block-rig",
+  "version": "0.1.0",
+  "description": "Zero-bloat, Bun-native block development framework for WordPress. Scaffolds a self-contained plugin built entirely by Bun with Lightning CSS.",
+  "license": "GPL-2.0-or-later",
+  "type": "module",
+  "bin": {
+    "create-block-rig": "bin/create-block-rig.ts"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "scripts": {
+    "create": "bun run bin/create-block-rig.ts",
+    "test": "bun test",
+    "check": "bun test"
+  }
+}

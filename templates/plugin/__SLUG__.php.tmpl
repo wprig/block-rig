@@ -1,0 +1,45 @@
+<?php
+/**
+ * Plugin Name:       __PLUGIN_NAME__
+ * Description:       Block plugin scaffolded by Block Rig — built with Bun, styled with plain CSS (Lightning CSS).
+ * Version:           __VERSION__
+ * Requires at least: 6.7
+ * Requires PHP:      8.1
+ * Author:            Block Rig
+ * License:           GPL-2.0-or-later
+ * Text Domain:       __TEXT_DOMAIN__
+ *
+ * @package __SLUG__
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * Register every block under blocks/. Each directory containing a
+ * block.json is registered as-is; "render": "file:./render.php" and
+ * asset handles in block.json do the rest. No manual registration.
+ */
+function __FUNC___register_blocks(): void {
+	$blocks_dir = __DIR__ . '/blocks';
+	if ( ! is_dir( $blocks_dir ) ) {
+		return;
+	}
+	foreach ( glob( $blocks_dir . '/*/block.json' ) ?: array() as $block_json ) {
+		register_block_type( dirname( $block_json ) );
+	}
+}
+add_action( 'init', '__FUNC___register_blocks' );
+
+/**
+ * Load translations for block strings.
+ */
+function __FUNC___load_textdomain(): void {
+	load_plugin_textdomain(
+		'__TEXT_DOMAIN__',
+		false,
+		dirname( plugin_basename( __FILE__ ) ) . '/languages'
+	);
+}
+add_action( 'init', '__FUNC___load_textdomain' );

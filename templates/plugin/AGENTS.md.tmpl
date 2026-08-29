@@ -1,0 +1,66 @@
+# AI Agents Guide — __PLUGIN_NAME__
+
+Welcome, AI Agent! This WordPress block plugin is built by Block Rig: **Bun is
+the only runtime** (bundler, transpiler, watcher). No esbuild, no webpack, no
+SCSS, no PostCSS.
+
+## 1. Source files only
+
+- NEVER edit anything under `blocks/*/build/` — it is generated.
+- Editor code: `blocks/<name>/src/*.tsx`. Frontend render: `blocks/<name>/render.php`.
+- Block config: `blocks/<name>/block.json` (apiVersion 3).
+
+## 2. Commands
+
+| Command | What it does |
+| --- | --- |
+| `bun run build` | Build all blocks (JS via Bun.build, CSS via Lightning CSS) |
+| `NODE_ENV=production bun run build` | Production (minified, no maps) |
+| `bun run dev` | Dev server: reverse-proxies the WP site + live-reload + per-block rebuild |
+| `bun run dev --proxy http://my-site.local` | Same, target via flag (alternative to config) |
+| `bun run block:new <slug> --type static\|dynamic\|php` | Scaffold a new block |
+| `bun run lint` | TypeScript check + stylelint CSS budget |
+| `bun test` | Unit tests (config, wp-externals, CSS compile, lint budget) |
+| `bun run check` | Full pre-flight: lint + test |
+| `bun run zip` | Production build + package as WP-installable `<slug>.zip` |
+
+## 3. Configuration first
+
+`blockrig.config.json` is the single source of truth: plugin slug, block
+namespace, block directory, CSS targets, dev-server target. Never hardcode
+these in scripts — read them via `scripts/lib/config.ts`. Set
+`devServer.proxyTarget` to the local WP site URL for `bun run dev`.
+
+## 4. CSS conventions (plain modern CSS — no SCSS, ever)
+
+The `.stylelintrc` budget is **enforced** — `bun run lint` fails on violations:
+
+- **Specificity budget (0,4,1)** — no IDs; keep selectors shallow; prefer
+  `:where()` to lower weight.
+- **Nesting depth ≤ 3.**
+- **No `!important`.**
+- **Sass-style `&` concatenation is banned** — native CSS nesting does not
+  concatenate; `&__x` compiles to a broken selector. Write full class names.
+- `@custom-media` is supported (compiled via Lightning CSS `drafts.customMedia`
+  — already enabled in `scripts/build.ts`; don't remove it).
+- Logical properties, `:has()`, container queries: all fine.
+
+## 5. Block types
+
+| Type | Files | Notes |
+| --- | --- | --- |
+| `dynamic` | block.json, src/index.tsx, src/edit.tsx, render.php, src/style.css | PHP renders; save returns null |
+| `static` | block.json, src/index.tsx, src/edit.tsx, src/save.tsx, src/style.css | Markup saved in post content |
+| `php` | block.json (`supports.autoRegister`), render.php, src/style.css | No JS build at all |
+
+Optional entries per block: `src/view.ts` → `build/view.js` (frontend JS — add
+`"viewScript": "file:./build/view.js"` to block.json) and
+`src/editorStyle.css` → `build/editorStyle.css` (editor-only styles — add the
+`editorStyle` handle). Add handles only when the files exist — WordPress
+warns on missing assets.
+
+## 6. wp.* globals
+
+Editor code imports `@wordpress/*` / `react` normally — the build remaps them
+to the `window.wp.*` globals WordPress enqueues (see
+`scripts/lib/wp-externals.ts`). Nothing WP-provided is ever bundled.

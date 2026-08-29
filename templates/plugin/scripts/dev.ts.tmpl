@@ -1,0 +1,210 @@
+/**
+ * Block Rig dev loop — Bun.serve reverse proxy + injected WebSocket
+ * live-reload + per-block incremental rebuild.
+ *
+ * Zero dependencies: replaces browser-sync + chokidar + tiny-lr.
+ *
+ * Usage: bun run scripts/dev.ts [--port 8777] [--proxy http://host]
+ */
+import path from 'node:path';
+import fs from 'node:fs';
+import { createBuildContext, listBlocks, buildBlock } from './lib/build';
+import { loadConfig } from './lib/config';
+
+const root = path.resolve( import.meta.dir, '..' );
+const config = loadConfig( root );
+
+function readFlag( name: string ): string | undefined {
+	const i = Bun.argv.indexOf( `--${ name }` );
+	return i !== -1 ? Bun.argv[ i + 1 ] : undefined;
+}
+
+const proxyArg = readFlag( 'proxy' ) ?? config.devServer.proxyTarget ?? '';
+
+if ( ! proxyArg ) {
+	console.error(
+		'[block-rig] No dev server target configured. Add to blockrig.config.json:\n' +
+			'  "devServer": { "proxyTarget": "http://my-site.local", "port": 8777 }\n' +
+			'or pass --proxy http://my-site.local'
+	);
+	process.exit( 1 );
+}
+
+const proxyTarget = new URL( proxyArg );
+const port = Number( readFlag( 'port' ) ?? config.devServer.port ?? 8777 );
+
+const ctx = createBuildContext( root );
+
+// -- live-reload clients -----------------------------------------------------
+const clients = new Set< { send: ( m: string ) => void } >();
+
+const RELOAD_SNIPPET = `<script>(()=>{const c=()=>{const s=new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/__br_reload');s.onmessage=(e)=>{if(e.data==='reload')location.reload()};s.onclose=()=>setTimeout(c,1000)};c()})()</script>`;
+
+function broadcast(): void {
+	for ( const ws of clients ) {
+		ws.send( 'reload' );
+	}
+	if ( clients.size > 0 ) {
+		console.log( `[block-rig] reload → ${ clients.size } client(s)` );
+	}
+}
+
+// -- per-block watcher -------------------------------------------------------
+let pending: Map< string, Set< string > > | null = null;
+let timer: ReturnType< typeof setTimeout > | null = null;
+
+async function flush(): Promise< void > {
+	const events = pending;
+	pending = null;
+	timer = null;
+	if ( ! events || events.size === 0 ) {
+		return;
+	}
+	const t0 = performance.now();
+	const known = new Set( listBlocks( ctx ) );
+	let failed = false;
+
+	for ( const [ block, files ] of events ) {
+		if ( block !== '.' && known.has( block ) ) {
+			try {
+				await buildBlock( ctx, block );
+			} catch ( e ) {
+				failed = true;
+				console.error( `[block-rig] ${ block } rebuild failed:`, ( e as Error ).message );
+			}
+			console.log(
+				`[block-rig] change: ${ [ ...files ].slice( 0, 3 ).join( ', ' ) } → rebuilt ${ block } in ${ Math.round( performance.now() - t0 ) }ms`
+			);
+		} else {
+			console.log( `[block-rig] change: ${ [ ...files ].slice( 0, 3 ).join( ', ' ) }` );
+		}
+	}
+
+	if ( ! failed ) {
+		broadcast();
+	}
+}
+
+function queueChange( block: string, file: string ): void {
+	if ( ! pending ) {
+		pending = new Map();
+	}
+	if ( ! pending.has( block ) ) {
+		pending.set( block, new Set() );
+	}
+	pending.get( block )!.add( file );
+	if ( timer ) {
+		clearTimeout( timer );
+	}
+	timer = setTimeout( flush, 25 );
+}
+
+function watchAll(): fs.FSWatcher[] {
+	const watchers: fs.FSWatcher[] = [];
+	const blocksDir = ctx.blocksDir;
+
+	watchers.push(
+		fs.watch( blocksDir, { recursive: true }, ( _event, file ) => {
+			if ( ! file || file.includes( '/build/' ) || file.startsWith( 'build/' ) ) {
+				return;
+			}
+			const [ block, ...rest ] = file.split( path.sep );
+			queueChange( block, `${ block }/${ rest.join( '/' ) }` );
+		} )
+	);
+
+	for ( const entry of fs.readdirSync( root, { withFileTypes: true } ) ) {
+		if ( entry.isFile() && /\.(php|json)$/.test( entry.name ) ) {
+			watchers.push(
+				fs.watch( path.join( root, entry.name ), () => queueChange( '.', entry.name ) )
+			);
+		}
+	}
+
+	return watchers;
+}
+
+// -- proxy server ------------------------------------------------------------
+function injectSnippet( html: string ): string {
+	if ( html.includes( '</body>' ) ) {
+		return html.replace( /<\/body>/i, `${ RELOAD_SNIPPET }</body>` );
+	}
+	return html + RELOAD_SNIPPET;
+}
+
+const HOP_HEADERS = new Set( [ 'content-length', 'content-encoding', 'transfer-encoding' ] );
+
+const server = Bun.serve( {
+	port,
+	idleTimeout: 60,
+	async fetch( req, srv ): Promise< Response > {
+		const url = new URL( req.url );
+
+		if ( url.pathname === '/__br_reload' ) {
+			if ( ! srv.upgrade( req, { data: undefined } ) ) {
+				return new Response( 'expected websocket', { status: 426 } );
+			}
+			return new Response( null, { status: 101 } );
+		}
+
+		const target = new URL( url.pathname + url.search, proxyTarget );
+		const headers = new Headers( req.headers );
+		headers.set( 'host', proxyTarget.host );
+		headers.set( 'accept-encoding', 'identity' );
+
+		const init: RequestInit = { method: req.method, headers, redirect: 'follow' };
+		if ( req.method !== 'GET' && req.method !== 'HEAD' ) {
+			init.body = await req.arrayBuffer();
+		}
+
+		let res: Response;
+		try {
+			res = await fetch( target, init );
+		} catch ( e ) {
+			return new Response(
+				`<h1>Block Rig proxy error</h1><pre>${ ( e as Error ).message }</pre>`,
+				{ status: 502, headers: { 'content-type': 'text/html' } }
+			);
+		}
+
+		const contentType = res.headers.get( 'content-type' ) ?? '';
+
+		if ( contentType.includes( 'text/html' ) ) {
+			let html = await res.text();
+			// Rewrite canonical absolute URLs so browsing stays on the proxy origin.
+			html = html.split( `https://${ proxyTarget.host }` ).join( '' );
+			html = html.split( `http://${ proxyTarget.host }` ).join( '' );
+			html = injectSnippet( html );
+			const out = new Headers();
+			out.set( 'content-type', contentType );
+			return new Response( html, { status: res.status, headers: out } );
+		}
+
+		const out = new Headers();
+		res.headers.forEach( ( v, k ) => {
+			if ( ! HOP_HEADERS.has( k ) ) {
+				out.set( k, v );
+			}
+		} );
+		return new Response( res.body, { status: res.status, headers: out } );
+	},
+	websocket: {
+		open( ws ) {
+			clients.add( ws );
+		},
+		message() {},
+		close( ws ) {
+			clients.delete( ws );
+		},
+	},
+} );
+
+void server;
+watchAll();
+
+console.log(
+	`[block-rig] dev server: http://localhost:${ port } → ${ proxyTarget.origin } (${ listBlocks( ctx ).length } block(s), live-reload on)`
+);
+console.log( '[block-rig] watching blocks/**/src + PHP templates…' );
+
+process.on( 'SIGINT', () => process.exit( 0 ) );

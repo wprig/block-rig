@@ -1,0 +1,28 @@
+/**
+ * Block Rig build — pure Bun.build + Lightning CSS.
+ * No esbuild, no webpack, no babel, no SCSS, no PostCSS.
+ *
+ * Usage: bun run scripts/build.ts [--watch]
+ */
+import path from 'node:path';
+import fs from 'node:fs';
+import { createBuildContext, buildOnce } from './lib/build';
+
+const root = path.resolve( import.meta.dir, '..' );
+const isWatch = process.argv.includes( '--watch' );
+const ctx = createBuildContext( root, { prod: process.env.NODE_ENV === 'production' } );
+
+async function main(): Promise< void > {
+	if ( !( await buildOnce( ctx ) ) && ! isWatch ) {
+		process.exit( 1 );
+	}
+	if ( isWatch ) {
+		console.log( '[block-rig] watching…' );
+		fs.watch( ctx.blocksDir, { recursive: true }, async () => {
+			await buildOnce( ctx );
+		} );
+		process.on( 'SIGINT', () => process.exit( 0 ) );
+	}
+}
+
+main();

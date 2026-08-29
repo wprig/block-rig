@@ -1,0 +1,14 @@
+{
+  "name": "block-rig-spike",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "dev": "bun run scripts/build.ts --watch"
+  },
+  "devDependencies": {
+    "browserslist": "^4.28.7",
+    "lightningcss": "^1.33.0"
+  }
+}

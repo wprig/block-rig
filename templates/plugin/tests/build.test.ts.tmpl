@@ -1,0 +1,59 @@
+import { describe, test, expect } from 'bun:test';
+import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import { createBuildContext, buildBlock } from '../scripts/lib/build';
+
+async function tmpBlock( files: Record< string, string > ): Promise< string > {
+	const root = fs.mkdtempSync( path.join( os.tmpdir(), 'br-view-' ) );
+	for ( const [ rel, content ] of Object.entries( files ) ) {
+		await Bun.write( path.join( root, 'blocks', 'demo', rel ), content );
+	}
+	return root;
+}
+
+describe( 'buildBlock entries', () => {
+	test( 'builds view.js when a view entry exists (viewScript path)', async () => {
+		const root = await tmpBlock( {
+			'block.json': JSON.stringify( { name: 'demo', supports: {} } ),
+			'src/index.ts': 'console.log( "editor" );',
+			'src/view.ts': 'console.log( "view" );',
+		} );
+		const ctx = createBuildContext( root );
+		const total = await buildBlock( ctx, 'demo' );
+		expect( total ).toBeGreaterThan( 0 );
+		expect( fs.existsSync( path.join( root, 'blocks', 'demo', 'build', 'index.js' ) ) ).toBe( true );
+		expect( fs.existsSync( path.join( root, 'blocks', 'demo', 'build', 'view.js' ) ) ).toBe( true );
+	} );
+
+	test( 'builds nothing for PHP-only blocks, but still compiles CSS', async () => {
+		const root = await tmpBlock( {
+			'block.json': JSON.stringify( { supports: { autoRegister: true } } ),
+			'src/index.ts': 'console.log( "should be ignored" );',
+			'src/style.css': '.demo { color: red; }',
+		} );
+		const ctx = createBuildContext( root );
+		const total = await buildBlock( ctx, 'demo' );
+		expect( fs.existsSync( path.join( root, 'blocks', 'demo', 'build', 'index.js' ) ) ).toBe( false );
+		expect( fs.existsSync( path.join( root, 'blocks', 'demo', 'build', 'style.css' ) ) ).toBe( true );
+		expect( total ).toBeGreaterThan( 0 );
+	} );
+
+	test( 'failing JS compilation throws with a useful message', async () => {
+		const root = await tmpBlock( {
+			'block.json': JSON.stringify( { supports: {} } ),
+			'src/index.ts': 'this is not valid typescript (',
+		} );
+		const ctx = createBuildContext( root );
+		await expect( buildBlock( ctx, 'demo' ) ).rejects.toThrow();
+	} );
+
+	test( 'broken CSS syntax throws instead of writing garbage', async () => {
+		const root = await tmpBlock( {
+			'block.json': JSON.stringify( { supports: {} } ),
+			'src/style.css': '.demo { color: red;;; }}',
+		} );
+		const ctx = createBuildContext( root );
+		await expect( buildBlock( ctx, 'demo' ) ).rejects.toThrow();
+	} );
+} );

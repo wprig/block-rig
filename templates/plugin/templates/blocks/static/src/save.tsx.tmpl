@@ -1,0 +1,19 @@
+import { useBlockProps } from '@wordpress/block-editor';
+
+interface Attributes {
+	message: string;
+}
+
+interface SaveProps {
+	attributes: Attributes;
+}
+
+export default function Save( { attributes }: SaveProps ) {
+	const blockProps = useBlockProps.save( { className: '__BLOCK_PREFIX__' } );
+
+	return (
+		<div { ...blockProps }>
+			<span className="__BLOCK_MESSAGE_CLASS__">{ attributes.message }</span>
+		</div>
+	);
+}

@@ -1,0 +1,14 @@
+{
+	"$schema": "https://raw.githubusercontent.com/stylelint/stylelint/main/docs/schema.json",
+	"extends": [ "stylelint-config-standard" ],
+	"rules": {
+		"max-nesting-depth": 3,
+		"selector-max-specificity": [ "0,4,1", { "message": "Specificity budget is (0,4,1) — no IDs, keep selectors shallow. Prefer :where() to lower weight." } ],
+		"declaration-no-important": true,
+		"custom-property-no-missing-var-function": true,
+		"selector-nested-pattern": [ "^(?!&[\\w-])", { "message": "Sass-style `&` concatenation is banned — native CSS nesting does not concatenate. Write full class names." } ],
+		"selector-class-pattern": null,
+		"no-descending-specificity": null
+	},
+	"ignoreFiles": [ "blocks/*/build/**" ]
+}

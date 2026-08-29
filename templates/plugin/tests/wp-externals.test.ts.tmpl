@@ -1,0 +1,70 @@
+import { describe, test, expect } from 'bun:test';
+import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import { wpGlobalFor, wpExternals } from '../scripts/lib/wp-externals';
+
+describe( 'wpGlobalFor', () => {
+	test( 'maps react and react-dom to their globals', () => {
+		expect( wpGlobalFor( 'react' ) ).toBe( 'window.React' );
+		expect( wpGlobalFor( 'react-dom' ) ).toBe( 'window.ReactDOM' );
+	} );
+
+	test( 'maps @wordpress packages to camelCased wp globals', () => {
+		expect( wpGlobalFor( '@wordpress/blocks' ) ).toBe( 'window.wp.blocks' );
+		expect( wpGlobalFor( '@wordpress/block-editor' ) ).toBe( 'window.wp.blockEditor' );
+		expect( wpGlobalFor( '@wordpress/server-side-render' ) ).toBe( 'window.wp.serverSideRender' );
+		expect( wpGlobalFor( '@wordpress/i18n' ) ).toBe( 'window.wp.i18n' );
+	} );
+
+	test( 'returns null for unhandled packages', () => {
+		expect( wpGlobalFor( 'lodash' ) ).toBe( null );
+	} );
+} );
+
+describe( 'wpExternals Bun plugin', () => {
+	test( 'remaps WP imports to globals without bundling them', async () => {
+		const dir = fs.mkdtempSync( path.join( os.tmpdir(), 'br-ext-' ) );
+		const entry = path.join( dir, 'entry.ts' );
+		await Bun.write(
+			entry,
+			[
+				'import { registerBlockType } from "@wordpress/blocks";',
+				'import { jsx } from "react/jsx-runtime";',
+				'console.log( registerBlockType, jsx );',
+			].join( '\n' )
+		);
+		const result = await Bun.build( {
+			entrypoints: [ entry ],
+			outdir: path.join( dir, 'out' ),
+			target: 'browser',
+			format: 'iife',
+			jsx: { runtime: 'automatic' },
+			plugins: [ wpExternals() ],
+		} );
+		expect( result.success ).toBe( true );
+		const output = await Bun.file( path.join( dir, 'out', 'entry.js' ) ).text();
+		expect( output ).toContain( 'window.wp.blocks' );
+		expect( output ).toContain( 'window.wp.element.jsx' );
+		expect( output.length ).toBeLessThan( 2000 );
+	} );
+
+	test( 'fails loudly on unhandled imports', async () => {
+		const dir = fs.mkdtempSync( path.join( os.tmpdir(), 'br-ext-' ) );
+		const entry = path.join( dir, 'entry.ts' );
+		await Bun.write( entry, 'import dayjs from "dayjs"; console.log( dayjs );' );
+		let threw = false;
+		try {
+			await Bun.build( {
+				entrypoints: [ entry ],
+				outdir: path.join( dir, 'out' ),
+				target: 'browser',
+				format: 'iife',
+				plugins: [ wpExternals() ],
+			} );
+		} catch {
+			threw = true;
+		}
+		expect( threw ).toBe( true );
+	} );
+} );

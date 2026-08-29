@@ -1,0 +1,4 @@
+node_modules/
+*.zip
+spike/blocks/*/build/
+.DS_Store

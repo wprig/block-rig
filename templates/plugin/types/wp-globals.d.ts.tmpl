@@ -1,0 +1,55 @@
+/**
+ * Minimal ambient types so editor code typechecks with zero @wordpress deps.
+ *
+ * Upgrade path for full autocompletion (optional):
+ *   bun add -d @types/react @wordpress/blocks @wordpress/block-editor @wordpress/components @wordpress/i18n
+ * …then delete this file.
+ *
+ * This file MUST stay a global script (no top-level import/export) so the
+ * `declare module` blocks register as ambient modules.
+ */
+declare module '@wordpress/blocks' {
+	export function registerBlockType(
+		blockType: Record< string, unknown >,
+		settings?: Record< string, unknown >
+	): unknown;
+}
+declare module '@wordpress/block-editor' {
+	export function useBlockProps( props?: Record< string, unknown > ): Record< string, unknown >;
+	export namespace useBlockProps {
+		export function save( props?: Record< string, unknown > ): Record< string, unknown >;
+	}
+	export const InspectorControls: any;
+}
+declare module '@wordpress/components' {
+	export const TextControl: any;
+	export const ToggleControl: any;
+	export const PanelBody: any;
+}
+declare module '@wordpress/i18n' {
+	export function __( text: string, domain?: string ): string;
+}
+declare module 'react/jsx-runtime' {
+	export function jsx( type: unknown, props: unknown, key?: string ): unknown;
+	export function jsxs( type: unknown, props: unknown, key?: string ): unknown;
+	export const Fragment: unknown;
+}
+declare module 'browserslist' {
+	function browserslist( query?: string | string[], opts?: Record< string, unknown > ): string[];
+	export default browserslist;
+}
+interface Window {
+	wp: Record< string, any >;
+	React: any;
+	ReactDOM: any;
+}
+namespace JSX {
+	type Element = any;
+	type ElementType = any;
+	interface IntrinsicElements {
+		[ key: string ]: any;
+	}
+	interface ElementChildrenAttribute {
+		children: {};
+	}
+}
