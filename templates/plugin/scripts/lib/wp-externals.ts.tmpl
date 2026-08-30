@@ -32,16 +32,24 @@ export function wpExternals(): Bun.BunPlugin {
 			);
 			build.onLoad( { filter: /.*/, namespace: 'wp-global' }, ( args ) => {
 				if ( args.path === 'react/jsx-runtime' || args.path === 'react/jsx-dev-runtime' ) {
-					// Dev builds import react/jsx-dev-runtime and call jsxDEV.
-					// wp.element ships jsxDEV; fall back to jsx for safety.
+					// WordPress ships the JSX runtime as the vendor script
+					// `react-jsx-runtime` (global ReactJSXRuntime) — its .min.js
+					// production build exposes only jsx/jsxs (no jsxDEV), and
+					// wp.element does NOT export jsx/jsxs at all. Map both runtime
+					// module names onto globalThis.ReactJSXRuntime when present,
+					// with a createElement-based jsxDEV fallback so dev builds
+					// (which call jsxDEV) never crash.
 					return {
 						contents: [
-							'module.exports = {',
-							'  jsx: window.wp.element.jsx,',
-							'  jsxs: window.wp.element.jsxs,',
-							'  jsxDEV: window.wp.element.jsxDEV || window.wp.element.jsx,',
+							'module.exports = ( ( r ) => ( {',
+							'  jsx: r.jsx || window.wp.element.createElement,',
+							'  jsxs: r.jsxs || window.wp.element.createElement,',
+							'  jsxDEV: r.jsxDEV || ( ( type, config, maybeKey ) => {',
+							'    if ( config && maybeKey !== undefined ) { config = { ...config, key: maybeKey }; }',
+							'    return window.wp.element.createElement( type, config );',
+							'  } ),',
 							'  Fragment: window.wp.element.Fragment,',
-							'};',
+							'} ) )( window.ReactJSXRuntime || {} );',
 						].join( '\n' ),
 						loader: 'js',
 					};

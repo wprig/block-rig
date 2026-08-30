@@ -45,11 +45,11 @@ describe( 'wpExternals Bun plugin', () => {
 		expect( result.success ).toBe( true );
 		const output = await Bun.file( path.join( dir, 'out', 'entry.js' ) ).text();
 		expect( output ).toContain( 'window.wp.blocks' );
-		expect( output ).toContain( 'window.wp.element.jsx' );
+		expect( output ).toContain( 'window.wp.element.createElement' );
 		expect( output.length ).toBeLessThan( 2000 );
 	} );
 
-	test( 'dev builds map jsxDEV (react/jsx-dev-runtime) onto wp.element', async () => {
+	test( 'dev builds map jsxDEV onto ReactJSXRuntime with createElement fallback', async () => {
 		const dir = fs.mkdtempSync( path.join( os.tmpdir(), 'br-ext-' ) );
 		const entry = path.join( dir, 'entry.tsx' );
 		await Bun.write( entry, 'export const el = <div className="probe">x</div>;' );
@@ -65,7 +65,19 @@ describe( 'wpExternals Bun plugin', () => {
 		expect( result.success ).toBe( true );
 		const output = await Bun.file( path.join( dir, 'out', 'entry.js' ) ).text();
 		expect( output ).toContain( 'jsxDEV' );
-		expect( output ).toContain( 'window.wp.element.jsxDEV || window.wp.element.jsx' );
+		expect( output ).toContain( 'ReactJSXRuntime' );
+		// The fallback path must be executable: extract the shim body from the
+		// (minified) build and evaluate it with WP-admin-shaped globals — no
+		// jsx/jsxs on wp.element, no ReactJSXRuntime global.
+		const shimSource = output.match( /module\.exports\s*=\s*\(\(r\)[\s\S]*?\)\)\(window\.ReactJSXRuntime\s*\|\|\s*\{\}\)/ );
+		expect( shimSource ).not.toBeNull();
+		const fn = new Function( 'module', 'exports', 'window', shimSource![ 0 ] );
+		const wpElement = { createElement: ( t: unknown, c: unknown ) => ( { t, c } ), Fragment: 'F' };
+		const shimModule = { exports: {} as Record< string, unknown > };
+		fn( shimModule, shimModule.exports, { wp: { element: wpElement } } );
+		expect( typeof shimModule.exports.jsxDEV ).toBe( 'function' );
+		expect( typeof shimModule.exports.jsx ).toBe( 'function' );
+		expect( shimModule.exports.Fragment ).toBe( 'F' ); // via wp.element.Fragment stub
 	} );
 
 	test( 'fails loudly on unhandled imports', async () => {
