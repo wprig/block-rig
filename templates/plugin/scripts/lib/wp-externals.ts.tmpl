@@ -30,15 +30,15 @@ export function wpExternals(): Bun.BunPlugin {
 				{ filter: /^(react|react-dom|react\/.*|@wordpress\/.*)$/ },
 				( args ) => ( { path: args.path, namespace: 'wp-global' } )
 			);
+
 			build.onLoad( { filter: /.*/, namespace: 'wp-global' }, ( args ) => {
+				// The JSX runtime: WordPress ships it as the vendor script
+				// `react-jsx-runtime` (global ReactJSXRuntime) — its production
+				// .min.js exposes only jsx/jsxs (no jsxDEV), and wp.element does
+				// NOT export jsx/jsxs at all. Map both runtime module names onto
+				// ReactJSXRuntime when present, with a createElement-based
+				// jsxDEV fallback so dev builds (which call jsxDEV) never crash.
 				if ( args.path === 'react/jsx-runtime' || args.path === 'react/jsx-dev-runtime' ) {
-					// WordPress ships the JSX runtime as the vendor script
-					// `react-jsx-runtime` (global ReactJSXRuntime) — its .min.js
-					// production build exposes only jsx/jsxs (no jsxDEV), and
-					// wp.element does NOT export jsx/jsxs at all. Map both runtime
-					// module names onto globalThis.ReactJSXRuntime when present,
-					// with a createElement-based jsxDEV fallback so dev builds
-					// (which call jsxDEV) never crash.
 					return {
 						contents: [
 							'module.exports = ( ( r ) => ( {',
@@ -54,11 +54,27 @@ export function wpExternals(): Bun.BunPlugin {
 						loader: 'js',
 					};
 				}
+
 				const global = wpGlobalFor( args.path );
 				if ( ! global ) {
 					return { contents: '', errors: [ { text: `Unhandled WP import: ${ args.path }` } ] };
 				}
-				return { contents: `module.exports = ${ global };`, loader: 'js' };
+
+				// Default-import support: expose the global object as the module.
+				// WP dist packages define exports as getters, so assigning the
+				// global as-is preserves them. A missing global throws immediately
+				// with a helpful message instead of failing later with a cryptic
+				// runtime error (e.g. React #130 when a component renders undefined).
+				return {
+					contents: [
+						`const __br_global = ${ global };`,
+						'if ( __br_global === undefined ) {',
+						`  throw new Error( "[block-rig] '${ args.path }' resolves to ${ global } which is not defined — the matching WordPress script is not enqueued on this page." );`,
+						'}',
+						'module.exports = __br_global;',
+					].join( '\n' ),
+					loader: 'js',
+				};
 			} );
 		},
 	};

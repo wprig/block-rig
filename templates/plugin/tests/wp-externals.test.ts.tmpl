@@ -46,7 +46,7 @@ describe( 'wpExternals Bun plugin', () => {
 		const output = await Bun.file( path.join( dir, 'out', 'entry.js' ) ).text();
 		expect( output ).toContain( 'window.wp.blocks' );
 		expect( output ).toContain( 'window.wp.element.createElement' );
-		expect( output.length ).toBeLessThan( 2000 );
+		expect( output.length ).toBeLessThan( 3000 );
 	} );
 
 	test( 'dev builds map jsxDEV onto ReactJSXRuntime with createElement fallback', async () => {

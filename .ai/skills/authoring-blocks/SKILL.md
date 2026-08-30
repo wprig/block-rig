@@ -79,6 +79,14 @@ Checklist:
   `useBlockProps.save()` in static `save()`.
 - Imports of `@wordpress/*` / `react` resolve to WP globals at build time —
   never vendor or self-bundle those packages.
+- **Import each symbol from the package that actually exports it.** WP's
+  globals are not the npm packages: `InspectorControls` and `useBlockProps`
+  live in `wp.blockEditor` (`@wordpress/block-editor`), while `TextControl`,
+  `SelectControl`, `ToggleControl`, `PanelBody` live in `wp.components`. A
+  symbol imported from the wrong package resolves to `undefined` and the
+  block fails at render with React error #130 ("element type is invalid").
+  When in doubt, check the export list of
+  `wp-includes/js/dist/<package>.min.js` in a WP install.
 - i18n domain = plugin slug (pre-wired in `block.json`).
 - CSS lives in `src/style.css`, scoped `.br-<slug>` (see the Styles skill).
 
