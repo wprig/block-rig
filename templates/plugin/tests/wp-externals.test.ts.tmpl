@@ -49,6 +49,25 @@ describe( 'wpExternals Bun plugin', () => {
 		expect( output.length ).toBeLessThan( 2000 );
 	} );
 
+	test( 'dev builds map jsxDEV (react/jsx-dev-runtime) onto wp.element', async () => {
+		const dir = fs.mkdtempSync( path.join( os.tmpdir(), 'br-ext-' ) );
+		const entry = path.join( dir, 'entry.tsx' );
+		await Bun.write( entry, 'export const el = <div className="probe">x</div>;' );
+		const result = await Bun.build( {
+			entrypoints: [ entry ],
+			outdir: path.join( dir, 'out' ),
+			target: 'browser',
+			format: 'iife',
+			jsx: { runtime: 'automatic' },
+			define: { 'process.env.NODE_ENV': '"development"' },
+			plugins: [ wpExternals() ],
+		} );
+		expect( result.success ).toBe( true );
+		const output = await Bun.file( path.join( dir, 'out', 'entry.js' ) ).text();
+		expect( output ).toContain( 'jsxDEV' );
+		expect( output ).toContain( 'window.wp.element.jsxDEV || window.wp.element.jsx' );
+	} );
+
 	test( 'fails loudly on unhandled imports', async () => {
 		const dir = fs.mkdtempSync( path.join( os.tmpdir(), 'br-ext-' ) );
 		const entry = path.join( dir, 'entry.ts' );

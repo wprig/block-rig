@@ -32,9 +32,17 @@ export function wpExternals(): Bun.BunPlugin {
 			);
 			build.onLoad( { filter: /.*/, namespace: 'wp-global' }, ( args ) => {
 				if ( args.path === 'react/jsx-runtime' || args.path === 'react/jsx-dev-runtime' ) {
+					// Dev builds import react/jsx-dev-runtime and call jsxDEV.
+					// wp.element ships jsxDEV; fall back to jsx for safety.
 					return {
-						contents:
-							'module.exports = { jsx: window.wp.element.jsx, jsxs: window.wp.element.jsxs, Fragment: window.wp.element.Fragment };',
+						contents: [
+							'module.exports = {',
+							'  jsx: window.wp.element.jsx,',
+							'  jsxs: window.wp.element.jsxs,',
+							'  jsxDEV: window.wp.element.jsxDEV || window.wp.element.jsx,',
+							'  Fragment: window.wp.element.Fragment,',
+							'};',
+						].join( '\n' ),
 						loader: 'js',
 					};
 				}
